@@ -66,7 +66,7 @@ exports.getEncuentrosEquiposPorTorneo = async(req, res) => {
   INNER JOIN jugadores jl ON jl.id = ejl.id_jugador 
   INNER JOIN jugadores jv ON jv.id = ejv.id_jugador
   INNER JOIN torneos t ON t.id = ee.id_torneo
-  INNER join grupos g on g.id = el.id_grupo 
+  INNER join grupos g on g.id = ee.id_grupo
   LEFT JOIN equipos eg ON ee.id_equipo_ganador = eg.id
   WHERE t.id = ?`;
 
@@ -100,6 +100,8 @@ async function crearGrupo(conn, idTorneo, nombre) {
 
 /** Inserta el encuentro entre dos equipos */
 async function crearEncuentroEquipos(conn, idEquipo1, idEquipo2, idTorneo, nivelRonda, ordenLlave,idGrupo,tipoRonda,idProximoEncuentro) {
+  console.log("idEquipo1, idEquipo2, idTorneo, nivelRonda, ordenLlave,idGrupo,tipoRonda,idProximoEncuentro");
+  console.log(idEquipo1, idEquipo2, idTorneo, nivelRonda, ordenLlave,idGrupo,tipoRonda,idProximoEncuentro);
   const [result] = await conn.query(
     'INSERT INTO encuentros_equipos (id_equipo_local, id_equipo_visitante, id_torneo, nivel_ronda, orden_llave,id_grupo,tipoRonda,id_proximo_encuentro) VALUES (?, ?, ?, ?, ?,?,?,?)',
     [idEquipo1, idEquipo2, idTorneo, nivelRonda, ordenLlave,idGrupo,tipoRonda,idProximoEncuentro]
@@ -124,6 +126,26 @@ async function asignarEquipoAGrupo(conn, idEquipo, idGrupo) {
   );
   return result.insertId;
 }
+
+async function actualizarGrupoEnfrenta(conn,idGrupo,idGrupoEnfrenta){
+
+  if (!idGrupo) {
+    return 'idGrupo es requerido';
+  }
+
+  const sql = `
+    UPDATE grupos
+    SET id_grupo_enfrenta = ?
+    WHERE id = ?
+  `;
+
+  const [result] = await conn.query(
+    sql,
+    [idGrupoEnfrenta,idGrupo]
+  );
+
+  return result;
+};
 
 // Crear nuevo torneo
 exports.createLlaves = async (req, res) => {
@@ -150,6 +172,8 @@ exports.createLlaves = async (req, res) => {
   let idGrupo = 0;
   let idProximoEncuentro1 = null;
   let idProximoEncuentro2 = null;
+  let idGrupo1 = null;
+  let idGrupo2 = null;
   for(var i = 0; i < llaves.length; i++){
     idTorneo = llaves[i].equipo1.torneo.id;
     const jugadortesEquipo1 = llaves[i].equipo1.jugadores;
@@ -163,7 +187,19 @@ exports.createLlaves = async (req, res) => {
     let grupo = await getGrupoByName(conn, idTorneo,numeroGrupo);
     //grupo
     if(grupo == null){
-      idGrupo = await crearGrupo(conn,idTorneo,numeroGrupo);      
+      idGrupo = await crearGrupo(conn,idTorneo,numeroGrupo);
+      if(idGrupo1 == null){
+        idGrupo1 = idGrupo;
+      }else{
+        if(idGrupo2 == null){
+          idGrupo2 = idGrupo;
+          
+          await actualizarGrupoEnfrenta(conn,idGrupo1,idGrupo2);
+          await actualizarGrupoEnfrenta(conn,idGrupo2,idGrupo1);
+          idGrupo1 = null;
+          idGrupo2 = null;
+        }
+      }
     }else{
       idGrupo = grupo.id;
     } 
@@ -185,8 +221,7 @@ exports.createLlaves = async (req, res) => {
 
         idProximoEncuentro1 = null;
         idProximoEncuentro2 = null;
-    }
-    
+    }    
 
     await asignarEquipoAGrupo(conn,idEquipo1,idGrupo);
     await asignarEquipoAGrupo(conn,idEquipo2,idGrupo);
@@ -241,22 +276,13 @@ async function getGrupoByName(conn, idTorneo, nombreGrupo) {
   return result.length > 0 ? result[0] : null;
 }
 
-async function getLlaveByTorneoGrupoRondaNivel(conn, idTorneo,idGrupo,nivelRonda,ordenLlave) {
-  if(ordenLlave % 2 == 0){
-    ordenLlave = ordenLlave - 1;
-  }else{
-    ordenLlave = ordenLlave + 1;
-  }
+async function getGrupoById(conn, idTorneo, idGrupo) {
   const [result] = await conn.query(
-    'SELECT * FROM encuentros_equipos WHERE id_torneo = ? AND id_grupo = ? AND nivel_ronda = ? AND orden_llave = ?',
-    [idTorneo,idGrupo,nivelRonda,ordenLlave]
+    'SELECT * FROM grupos WHERE id_torneo = ? AND id = ?',
+    [idTorneo, idGrupo]
   );
 
-  if(result.length == 0){
-    return {};
-  }
-
-  return result[0];
+  return result.length > 0 ? result[0] : null;
 }
 
 async function getMaxOrderGrupo(conn, idTorneo,idGrupo,nivelRonda) {
@@ -301,6 +327,46 @@ async function actualizarMarcador(conn,idEncuentro,puntos_local,puntos_visitante
   const [result] = await conn.query(
     sql,
     [puntos_local,puntos_visitantes,idEquipoGanador,idEncuentro]
+  );
+
+  return result;
+};
+
+async function actualizarClasificacionGrupo(conn,idGrupo,idEquipo,puntosFavor,puntosContra){
+
+  if (!idGrupo) {
+    return 'idGrupo es requerido';
+  }
+
+  const sql = `
+    UPDATE grupo_equipos
+    SET puntos_favor = ?, puntos_contra = ?, clasificado = 1
+    WHERE id_grupo = ? AND id_equipo = ?
+  `;
+
+  const [result] = await conn.query(
+    sql,
+    [puntosFavor,puntosContra,idGrupo,idEquipo]
+  );
+
+  return result;
+};
+
+async function actualizarFinalizadoGrupo(conn,idGrupo){
+
+  if (!idGrupo) {
+    return 'idGrupo es requerido';
+  }
+
+  const sql = `
+    UPDATE grupos
+    SET finalizado = 1
+    WHERE id = ?
+  `;
+
+  const [result] = await conn.query(
+    sql,
+    [idGrupo]
   );
 
   return result;
@@ -387,6 +453,87 @@ async function obtenerUltimoNivelFinalizado(conn, idTorneo,idGrupo,cantidadEquip
  return ultimoNivelFinalizado;
 }
 
+async function getTotalPuntosEquipo(conn, idTorneo,idEquipo) {
+  const query = `select SUM(pt.totalFavorPuntos) totalFavorPuntos, SUM(pt.totalContraPuntos) totalContraPuntos from (
+SELECT SUM(puntos_local) totalFavorPuntos,SUM(puntos_visitantes) totalContraPuntos FROM encuentros_equipos 
+WHERE id_torneo = ? AND (id_equipo_local = ?)
+union
+SELECT SUM(puntos_visitantes) totalFavorPuntos,SUM(puntos_local) totalContraPuntos FROM encuentros_equipos 
+WHERE id_torneo = ? AND (id_equipo_visitante = ?)
+) as pt`;
+  const [result] = await conn.query(query,[idTorneo,idEquipo,idTorneo,idEquipo]
+  );
+
+  if(result.length == 0){
+    return {
+      totalFavorPuntos:0,
+      totalContraPuntos:0
+    };
+  }
+
+  return {
+    totalFavorPuntos:result[0].totalFavorPuntos,
+    totalContraPuntos:result[0].totalContraPuntos
+  };
+}
+
+async function getEquiposClasificadosByGrupo(conn,idGrupo) {
+  const [result] = await conn.query(
+    'SELECT * FROM grupo_equipos WHERE clasificado = 1 AND id_grupo = ? order by puntos_favor;',
+    [idGrupo]
+  );
+  return result;
+}
+
+async function armarLlavesDeGruposFinalizados(conn, idTorneo,idGrupoFinalizado,nivelRonda) {
+  let grupoFinalizado = await getGrupoById(conn,idTorneo,idGrupoFinalizado);
+  console.log("---->1");
+
+  if(grupoFinalizado){
+    console.log("---->2");
+    if(grupoFinalizado.id_grupo_enfrenta != null && grupoFinalizado.finalizado){
+      console.log("---->3");
+      let grupoEnfrenta = await getGrupoById(conn,idTorneo,grupoFinalizado.id_grupo_enfrenta);
+      if(grupoEnfrenta == null){
+        console.log("---->3.1.1.");
+        return;
+      }
+      if(grupoEnfrenta.finalizado){
+        console.log("---->4");
+        let equiposClasificadosFinalizado = await getEquiposClasificadosByGrupo(conn,idGrupoFinalizado);
+        let equiposClasificadosEnfrenta = await getEquiposClasificadosByGrupo(conn,grupoFinalizado.id_grupo_enfrenta);
+
+        if(equiposClasificadosFinalizado.length == equiposClasificadosEnfrenta.length){
+          console.log("---->5");
+            let idGrupoGrupos = await crearGrupo(conn,idTorneo,grupoFinalizado.nombre +" vs " + grupoEnfrenta.nombre);
+            let ordenLlave = 1;
+            nivelRonda = nivelRonda + 1;
+
+            let idProximoEncuentro1 = null;
+            let idProximoEncuentro2 = null;
+
+            for (let index = 0; index < equiposClasificadosFinalizado.length; index++) {
+              const equipoF = equiposClasificadosFinalizado[index];
+              const equipoE = equiposClasificadosEnfrenta[index];
+
+              await asignarEquipoAGrupo(conn,equipoF.id_equipo,idGrupoGrupos);
+              await asignarEquipoAGrupo(conn,equipoE.id_equipo,idGrupoGrupos); 
+
+              if(idProximoEncuentro1 == null){
+                console.log("---->6");
+                idProximoEncuentro1 = await crearEncuentroEquipos(conn, equipoF.id_equipo, equipoE.id_equipo, idTorneo, nivelRonda, ordenLlave,idGrupoGrupos,'Normal',null);
+              }else{
+                console.log("---->7");
+                idProximoEncuentro2 = await crearEncuentroEquipos(conn, equipoF.id_equipo, equipoE.id_equipo, idTorneo, nivelRonda, ordenLlave,idGrupoGrupos,'Normal',idProximoEncuentro1);
+                await actualizarProximoEncuentro(conn,idProximoEncuentro1,idProximoEncuentro2);
+              }
+              ordenLlave++;
+            }            
+        }
+      }
+    }    
+  }
+}
 
 exports.actualizarMarcador = async (req, res) => {
   const { idEncuentro,puntosLocal,puntosVisitante} = req.body;
@@ -454,9 +601,24 @@ exports.actualizarMarcador = async (req, res) => {
     if(tipoTorneo.tipoClasificacion == "Llave" || (tipoTorneo.tipoClasificacion == "DobleEliminacion" && llave.nivel_ronda > 1)){
       ultimoNivelFinalizado = await obtenerUltimoNivelFinalizado(conn, llave.id_torneo,llave.id_grupo,tipoTorneo.cantidadEquipoPorGrupo);
       if(ultimoNivelFinalizado == llave.nivel_ronda){
-        let cantidadEncuentrosSiguienteRonda = await getEncuentroRonda(conn, llave.id_torneo,llave.id_grupo,(ultimoNivelFinalizado + 1)) 
+        let llaveFinalista = await getLlaveById(conn, idProximoEncuentro);
+        let cantidadEncuentrosSiguienteRonda = await getEncuentroRonda(conn, llaveFinalista.id_torneo,llaveFinalista.id_grupo,(ultimoNivelFinalizado + 1)) 
         if((cantidadEncuentrosSiguienteRonda * 2) >= tipoTorneo.cantidadClasificadosPorGrupo){
-          await actualizarEncutroAFinalista(conn,llave.id_torneo,llave.id_grupo,(ultimoNivelFinalizado + 1));
+          await actualizarEncutroAFinalista(conn,llaveFinalista.id_torneo,llaveFinalista.id_grupo,(ultimoNivelFinalizado + 1));
+
+          let puntosLocalFinal = await getTotalPuntosEquipo(conn,llaveFinalista.id_torneo,llaveFinalista.id_equipo_local);
+          let puntosVisitanteFinal = await getTotalPuntosEquipo(conn,llaveFinalista.id_torneo,llaveFinalista.id_equipo_visitante);
+          let resultUodate = await actualizarMarcador(
+            conn,llaveFinalista.id,
+            puntosLocalFinal.totalFavorPuntos - puntosLocalFinal.totalContraPuntos,
+            puntosVisitanteFinal.totalFavorPuntos - puntosVisitanteFinal.totalContraPuntos,
+            null
+          );
+          await actualizarClasificacionGrupo(conn,llaveFinalista.id_grupo,llaveFinalista.id_equipo_local,puntosLocalFinal.totalFavorPuntos,puntosLocalFinal.totalContraPuntos);
+          await actualizarClasificacionGrupo(conn,llaveFinalista.id_grupo,llaveFinalista.id_equipo_visitante,puntosVisitanteFinal.totalFavorPuntos,puntosVisitanteFinal.totalContraPuntos);
+
+          await actualizarFinalizadoGrupo(conn,llaveFinalista.id_grupo);
+          await armarLlavesDeGruposFinalizados(conn,llave.id_torneo,llaveFinalista.id_grupo,nivelRonda);
         }
       }
     }
