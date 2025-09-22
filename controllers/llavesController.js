@@ -576,49 +576,54 @@ exports.actualizarMarcador = async (req, res) => {
   let resultUodate = await actualizarMarcador(conn,llave.id,puntosLocal,puntosVisitante,idEquipoGanador);
 
   let llavePar = await getLlaveById(conn, llave.id_proximo_encuentro);
+  if(llavePar == null){
+    //verificar si el torneo acabo
 
-  if(llavePar.id_equipo_ganador){
-    let nivelRonda = llave.nivel_ronda + 1;
-    let ordenLlave = await getMaxOrderGrupo(conn, llave.id_torneo,llave.id_grupo,nivelRonda);
-    if(ordenLlave){
-      ordenLlave = ordenLlave + 1;
-    }else{
-      ordenLlave = 1;
-    }
+  }else{
 
-    let idProximoEncuentro = await crearEncuentroEquipos(conn, llavePar.id_equipo_ganador,idEquipoGanador, llave.id_torneo, nivelRonda, ordenLlave,llave.id_grupo,'Ganadores');
-    
-    if(tipoTorneo.tipoClasificacion == "DobleEliminacion" && llave.nivel_ronda == 1){
-      let idPerdedorllaveAnterior = llavePar.id_equipo_local;
-      if(llavePar.id_equipo_ganador == llavePar.id_equipo_local){
-        idPerdedorllaveAnterior = llavePar.id_equipo_visitante;
+     if(llavePar.id_equipo_ganador){
+      let nivelRonda = llave.nivel_ronda + 1;
+      let ordenLlave = await getMaxOrderGrupo(conn, llave.id_torneo,llave.id_grupo,nivelRonda);
+      if(ordenLlave){
+        ordenLlave = ordenLlave + 1;
+      }else{
+        ordenLlave = 1;
       }
 
-      let idProximoEncuentroPerdedro = await crearEncuentroEquipos(conn, idPerdedorllaveAnterior,idEquipoPerdedor, llave.id_torneo, nivelRonda, ordenLlave,llave.id_grupo,'Perdedores',idProximoEncuentro);
-      await actualizarProximoEncuentro(conn,idProximoEncuentro,idProximoEncuentroPerdedro);
-    }
+      let idProximoEncuentro = await crearEncuentroEquipos(conn, llavePar.id_equipo_ganador,idEquipoGanador, llave.id_torneo, nivelRonda, ordenLlave,llave.id_grupo,'Ganadores');
+      
+      if(tipoTorneo.tipoClasificacion == "DobleEliminacion" && llave.nivel_ronda == 1){
+        let idPerdedorllaveAnterior = llavePar.id_equipo_local;
+        if(llavePar.id_equipo_ganador == llavePar.id_equipo_local){
+          idPerdedorllaveAnterior = llavePar.id_equipo_visitante;
+        }
 
-    if(tipoTorneo.tipoClasificacion == "Llave" || (tipoTorneo.tipoClasificacion == "DobleEliminacion" && llave.nivel_ronda > 1)){
-      ultimoNivelFinalizado = await obtenerUltimoNivelFinalizado(conn, llave.id_torneo,llave.id_grupo,tipoTorneo.cantidadEquipoPorGrupo);
-      if(ultimoNivelFinalizado == llave.nivel_ronda){
-        let llaveFinalista = await getLlaveById(conn, idProximoEncuentro);
-        let cantidadEncuentrosSiguienteRonda = await getEncuentroRonda(conn, llaveFinalista.id_torneo,llaveFinalista.id_grupo,(ultimoNivelFinalizado + 1)) 
-        if((cantidadEncuentrosSiguienteRonda * 2) >= tipoTorneo.cantidadClasificadosPorGrupo){
-          await actualizarEncutroAFinalista(conn,llaveFinalista.id_torneo,llaveFinalista.id_grupo,(ultimoNivelFinalizado + 1));
+        let idProximoEncuentroPerdedro = await crearEncuentroEquipos(conn, idPerdedorllaveAnterior,idEquipoPerdedor, llave.id_torneo, nivelRonda, ordenLlave,llave.id_grupo,'Perdedores',idProximoEncuentro);
+        await actualizarProximoEncuentro(conn,idProximoEncuentro,idProximoEncuentroPerdedro);
+      }
 
-          let puntosLocalFinal = await getTotalPuntosEquipo(conn,llaveFinalista.id_torneo,llaveFinalista.id_equipo_local);
-          let puntosVisitanteFinal = await getTotalPuntosEquipo(conn,llaveFinalista.id_torneo,llaveFinalista.id_equipo_visitante);
-          let resultUodate = await actualizarMarcador(
-            conn,llaveFinalista.id,
-            puntosLocalFinal.totalFavorPuntos - puntosLocalFinal.totalContraPuntos,
-            puntosVisitanteFinal.totalFavorPuntos - puntosVisitanteFinal.totalContraPuntos,
-            null
-          );
-          await actualizarClasificacionGrupo(conn,llaveFinalista.id_grupo,llaveFinalista.id_equipo_local,puntosLocalFinal.totalFavorPuntos,puntosLocalFinal.totalContraPuntos);
-          await actualizarClasificacionGrupo(conn,llaveFinalista.id_grupo,llaveFinalista.id_equipo_visitante,puntosVisitanteFinal.totalFavorPuntos,puntosVisitanteFinal.totalContraPuntos);
+      if(tipoTorneo.tipoClasificacion == "Llave" || (tipoTorneo.tipoClasificacion == "DobleEliminacion" && llave.nivel_ronda > 1)){
+        ultimoNivelFinalizado = await obtenerUltimoNivelFinalizado(conn, llave.id_torneo,llave.id_grupo,tipoTorneo.cantidadEquipoPorGrupo);
+        if(ultimoNivelFinalizado == llave.nivel_ronda){
+          let llaveFinalista = await getLlaveById(conn, idProximoEncuentro);
+          let cantidadEncuentrosSiguienteRonda = await getEncuentroRonda(conn, llaveFinalista.id_torneo,llaveFinalista.id_grupo,(ultimoNivelFinalizado + 1)) 
+          if((cantidadEncuentrosSiguienteRonda * 2) >= tipoTorneo.cantidadClasificadosPorGrupo){
+            await actualizarEncutroAFinalista(conn,llaveFinalista.id_torneo,llaveFinalista.id_grupo,(ultimoNivelFinalizado + 1));
 
-          await actualizarFinalizadoGrupo(conn,llaveFinalista.id_grupo);
-          await armarLlavesDeGruposFinalizados(conn,llave.id_torneo,llaveFinalista.id_grupo,nivelRonda);
+            let puntosLocalFinal = await getTotalPuntosEquipo(conn,llaveFinalista.id_torneo,llaveFinalista.id_equipo_local);
+            let puntosVisitanteFinal = await getTotalPuntosEquipo(conn,llaveFinalista.id_torneo,llaveFinalista.id_equipo_visitante);
+            let resultUodate = await actualizarMarcador(
+              conn,llaveFinalista.id,
+              puntosLocalFinal.totalFavorPuntos - puntosLocalFinal.totalContraPuntos,
+              puntosVisitanteFinal.totalFavorPuntos - puntosVisitanteFinal.totalContraPuntos,
+              null
+            );
+            await actualizarClasificacionGrupo(conn,llaveFinalista.id_grupo,llaveFinalista.id_equipo_local,puntosLocalFinal.totalFavorPuntos,puntosLocalFinal.totalContraPuntos);
+            await actualizarClasificacionGrupo(conn,llaveFinalista.id_grupo,llaveFinalista.id_equipo_visitante,puntosVisitanteFinal.totalFavorPuntos,puntosVisitanteFinal.totalContraPuntos);
+
+            await actualizarFinalizadoGrupo(conn,llaveFinalista.id_grupo);
+            await armarLlavesDeGruposFinalizados(conn,llave.id_torneo,llaveFinalista.id_grupo,nivelRonda);
+          }
         }
       }
     }
@@ -635,6 +640,7 @@ exports.actualizarMarcador = async (req, res) => {
   });
 
   } catch (err) {
+    await conn.rollback()
     console.error('❌ Error al obtener encuentros:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
