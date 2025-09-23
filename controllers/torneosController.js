@@ -4,7 +4,7 @@ const db = require('../config/db');
 exports.getAllTorneos = async (req, res) => {
 
   try {
-    const [rows] = await db.query('SELECT t.id, t.nombre, t.descripcion, (activo = 1) as activo, t.fecha_inicio as fechaInicio,t.fecha_registro fechaRegistro,id_tipo_torneo idTipoTorneo, tt.nombre nombreTipoTorneo FROM torneos t inner join tipo_torneo tt on tt.id = t.id_tipo_torneo');
+    const [rows] = await db.query('SELECT t.id, t.nombre, t.descripcion, (activo = 1) as activo,(principal = 1) as principal, t.fecha_inicio as fechaInicio,t.fecha_registro fechaRegistro,id_tipo_torneo idTipoTorneo, tt.nombre nombreTipoTorneo FROM torneos t inner join tipo_torneo tt on tt.id = t.id_tipo_torneo');
     res.json(rows);
   } catch (err) {
     console.error('❌ Error:', err);
@@ -77,6 +77,43 @@ exports.getTiposTorneo = async(req, res) => {
     const [rows] = await db.query(query);
 
     res.json(rows);
+  } catch (err) {
+    console.error('❌ Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.actualizarPrincipal = async(req, res) => {
+
+  const { id } = req.params;
+
+  if (!id) {
+    return 'id torneo es requerido';
+  }
+
+  try{
+
+      const [result1] = await await db.query(
+      `
+      UPDATE torneos
+      SET principal = 0
+      `
+      );
+    
+    const sql = `
+      UPDATE torneos
+      SET 
+          principal = 1
+      WHERE id = ?;
+    `;
+
+    const [result] = await await db.query(
+      sql,
+      [id]
+    );
+
+    res.status(200).json({ id: result.insertId, message: 'Torneo actualizado' });
+
   } catch (err) {
     console.error('❌ Error:', err);
     res.status(500).json({ error: err.message });
